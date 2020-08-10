@@ -1834,9 +1834,9 @@ class MaskRCNN(object):
         self.keras_model = self.build(mode=mode, config=config)
 
         # add jw for gpu memory shortage
-        tfconfig = tf.ConfigProto()
-        tfconfig.gpu_options.per_process_gpu_memory_fraction = 0.9
-        tf.keras.backend.set_session(tf.Session(config=tfconfig))
+        # tfconfig = tf.ConfigProto()
+        # tfconfig.gpu_options.per_process_gpu_memory_fraction = 0.9
+        # tf.keras.backend.set_session(tf.Session(config=tfconfig))
 
     def build(self, mode, config):
         """Build Mask R-CNN architecture.
