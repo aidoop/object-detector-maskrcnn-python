@@ -11,15 +11,17 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
        the command line as such:
 
     # Train a new model starting from pre-trained COCO weights
-    python3 object-train.py train --dataset=/path/to/object/dataset --weights=coco
+    python3 single-object-train.py train --dataset=/path/to/object/dataset --weights=coco
 
     # Resume training a model that you had trained earlier
-    python3 object-train.py train --dataset=/path/to/object/dataset --weights=last
+    python3 single-object-train.py train --dataset=/path/to/object/dataset --weights=last
 
     # Train a new model starting from ImageNet weights
-    python3 object-train.py train --dataset=/path/to/object/dataset --weights=imagenet
+    python3 single-object-train.py train --dataset=/path/to/object/dataset --weights=imagenet
 """
 
+from mrcnn import model as modellib, utils
+from mrcnn.config import Config
 import os
 import sys
 import json
@@ -27,13 +29,13 @@ import datetime
 import numpy as np
 import skimage.draw
 
+import time
+
 # Root directory of the project
 ROOT_DIR = os.path.abspath("../")
 
 # Import Mask RCNN
 sys.path.append(ROOT_DIR)  # To find local version of the library
-from mrcnn.config import Config
-from mrcnn import model as modellib, utils
 
 # Path to trained weights file
 COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
@@ -72,10 +74,12 @@ class TrainConfig(Config):
 #  Dataset
 ############################################################
 
-class BalloonDataset(utils.Dataset):
+class SingleObjectDataSet(utils.Dataset):
 
-    def load_balloon(self, dataset_dir, subset):
-        """Load a subset of the Balloon dataset.
+    #single_object_name = ""
+
+    def load_single_object(self, dataset_dir, subset):
+        """Load a subset of an single object dataset.
         dataset_dir: Root directory of the dataset.
         subset: Subset to load: train or val
         """
@@ -102,7 +106,8 @@ class BalloonDataset(utils.Dataset):
         # }
         # We mostly care about the x and y coordinates of each region
         # Note: In VIA 2.0, regions was changed from a dict to a list.
-        annotations = json.load(open(os.path.join(dataset_dir, "via_region_data.json")))
+        annotations = json.load(
+            open(os.path.join(dataset_dir, "via_region_data.json")))
         annotations = list(annotations.values())  # don't need the dict keys
 
         # The VIA tool saves images in the JSON even if they don't have any
@@ -116,9 +121,10 @@ class BalloonDataset(utils.Dataset):
             # shape_attributes (see json format above)
             # The if condition is needed to support VIA versions 1.x and 2.x.
             if type(a['regions']) is dict:
-                polygons = [r['shape_attributes'] for r in a['regions'].values()]
+                polygons = [r['shape_attributes']
+                            for r in a['regions'].values()]
             else:
-                polygons = [r['shape_attributes'] for r in a['regions']] 
+                polygons = [r['shape_attributes'] for r in a['regions']]
 
             # load_mask() needs the image size to convert polygons to masks.
             # Unfortunately, VIA doesn't include it in JSON, so we must read
@@ -172,13 +178,13 @@ class BalloonDataset(utils.Dataset):
 def train(model):
     """Train the model."""
     # Training dataset.
-    dataset_train = BalloonDataset()
-    dataset_train.load_balloon(args.dataset, "train")
+    dataset_train = SingleObjectDataSet()
+    dataset_train.load_single_object(args.dataset, "train")
     dataset_train.prepare()
 
     # Validation dataset
-    dataset_val = BalloonDataset()
-    dataset_val.load_balloon(args.dataset, "val")
+    dataset_val = SingleObjectDataSet()
+    dataset_val.load_single_object(args.dataset, "val")
     dataset_val.prepare()
 
     # *** This training schedule is an example. Update to your needs ***
@@ -188,7 +194,7 @@ def train(model):
     print("Training network heads")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=30, # 30 -> 100
+                epochs=30,  # 30 -> 100
                 layers='heads')
 
 
@@ -221,12 +227,22 @@ def detect_and_color_splash(model, image_path=None, video_path=None):
         print("Running on {}".format(args.image))
         # Read image
         image = skimage.io.imread(args.image)
+
+        sttime = time.time()
+
         # Detect objects
-        r = model.detect([image], verbose=1)[0]
+        r = model.detect([image], verbose=0)[0]
+
+        edtime = time.time()
+
+        print("-----------------------------------------------------")
+        print("WorkingTime: {} sec".format(edtime-sttime))
+
         # Color splash
         splash = color_splash(image, r['masks'])
         # Save output
-        file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
+        file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(
+            datetime.datetime.now())
         skimage.io.imsave(file_name, splash)
     elif video_path:
         import cv2
@@ -237,7 +253,8 @@ def detect_and_color_splash(model, image_path=None, video_path=None):
         fps = vcapture.get(cv2.CAP_PROP_FPS)
 
         # Define codec and create video writer
-        file_name = "splash_{:%Y%m%dT%H%M%S}.avi".format(datetime.datetime.now())
+        file_name = "splash_{:%Y%m%dT%H%M%S}.avi".format(
+            datetime.datetime.now())
         vwriter = cv2.VideoWriter(file_name,
                                   cv2.VideoWriter_fourcc(*'MJPG'),
                                   fps, (width, height))
@@ -274,6 +291,9 @@ if __name__ == '__main__':
     # Parse command line arguments
     parser = argparse.ArgumentParser(
         description='Train Mask R-CNN to detect a object.')
+    parser.add_argument("command",
+                        metavar="<command>",
+                        help="'train' or 'splash'")
     parser.add_argument('--dataset', required=False,
                         metavar="/path/to/balloon/dataset/",
                         help='Directory of the Balloon dataset')
@@ -293,7 +313,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Validate arguments
-    assert args.dataset, "Argument --dataset is required for training"
+    if args.command == "train":
+        assert args.dataset, "Argument --dataset is required for training"
+    elif args.command == "splash":
+        assert args.image or args.video,\
+            "Provide --image or --video to apply color splash"
 
     print("Weights: ", args.weights)
     print("Dataset: ", args.dataset)

@@ -1,10 +1,11 @@
 # Data files and directories common in repo root
-datasets/
-logs/
+dataset/
 *.h5
 results/
-temp/
-test/
+splash*.png
+
+# exceptions
+#!mask_rcnn_coco.h5
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
